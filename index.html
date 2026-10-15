@@ -279,7 +279,7 @@
           <label>Expensive above percentile <input type="number" name="richPct" min="0.5" max="0.95" step="0.01"></label>
           <label>Morning digest hour <input type="number" name="digestHour" min="5" max="12" step="1"></label>
           <label class="check"><input type="checkbox" name="digestEnabled"> Send the morning digest</label>
-          <label>Product line on the sheet (regex) <input name="quoteProductPattern" placeholder="#2 Clear"></label>
+          <label>Product line on the sheet (regex) <input name="quoteProductPattern" placeholder="\bRM\b"></label>
           <label>Blend <select name="quoteBlend"><option value="auto">Follow the sheet (B5/B20 months)</option><option value="B5">B5</option><option value="B20">B20</option></select></label>
           <label>FuelCloud tank <select name="tankId" id="tankSelect"><option value="">First diesel tank</option></select></label>
           <label class="span">Extra closed days (YYYY-MM-DD, comma-separated) <input name="holidays" placeholder="2026-12-24, 2026-12-31"></label>
@@ -681,9 +681,11 @@ $('btnPush').addEventListener('click', async () => {
   try {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('This browser does not support push notifications. On iPhone, add FuelDesk to the Home Screen first.');
     if (!S?.vapidPublicKey) throw new Error('The Worker has no VAPID keys yet — see the setup guide.');
-    const reg = await navigator.serviceWorker.ready;
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') throw new Error('Notifications were not allowed.');
+    // ask first, while the tap still counts as a user gesture (Android drops the prompt after an await)
+    const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (perm === 'denied') throw new Error('Notifications are blocked for this site — allow them in Chrome site settings.');
+    if (perm !== 'granted') throw new Error('Chrome did not show the prompt — tap the bell in the address bar, or allow notifications in site settings.');
+    const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, no) => setTimeout(() => no(new Error('Background worker not ready — reload the page and try again.')), 8000))]);
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(S.vapidPublicKey) });
     await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON(), ua: navigator.userAgent } });
     toast('Notifications are on for this device'); await refresh(true);
@@ -705,7 +707,7 @@ function demoApi(path, opts) {
 function DEMO_STATUS() {
   const today = todayYmd(); const d = (n) => { const x = ymdDate(today); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
   const hoDaily = {}, quotes = {}, tankHistory = {};
-  let v = 4.35; for (let i = 90; i >= 0; i--) { const ymd = d(-i); const dow = ymdDate(ymd).getUTCDay(); if (dow === 0 || dow === 6) continue; v = Math.max(3.9, v + (Math.sin(i / 5) * 0.03) + (i > 30 ? 0.004 : -0.002)); hoDaily[ymd] = +v.toFixed(3); if (i < 25) quotes[ymd] = { price: +(v + 1.05 + Math.sin(i) * 0.01).toFixed(3), product: 'B5 #2 Clear B5', source: 'sheet' }; }
+  let v = 4.35; for (let i = 90; i >= 0; i--) { const ymd = d(-i); const dow = ymdDate(ymd).getUTCDay(); if (dow === 0 || dow === 6) continue; v = Math.max(3.9, v + (Math.sin(i / 5) * 0.03) + (i > 30 ? 0.004 : -0.002)); hoDaily[ymd] = +v.toFixed(3); if (i < 25) quotes[ymd] = { price: +(v + 1.05 + Math.sin(i) * 0.01).toFixed(3), product: 'B5 RM B5', source: 'sheet' }; }
   let lvl = 7800; for (let i = 30; i >= 0; i--) { const ymd = d(-i); const dow = ymdDate(ymd).getUTCDay(); if (i === 10) lvl = 9000; lvl -= (dow === 0 || dow === 6) ? 40 : 520; tankHistory[ymd] = { inventoryGal: Math.round(lvl) }; }
   const inv = Math.round(lvl); const proj = []; let L = inv;
   for (let i = 0; i < 35; i++) { const ymd = d(i); const dow = ymdDate(ymd).getUTCDay(); const u = (dow === 0 || dow === 6) ? 44 : 572; const s = L; L -= i === 0 ? u * .8 : u; proj.push({ ymd, start: Math.round(s), end: Math.round(L), usage: u }); }
@@ -718,12 +720,12 @@ function DEMO_STATUS() {
   const q = quotes[Object.keys(quotes).sort().pop()];
   return {
     serverTime: new Date().toISOString(), pushSubscribers: 1, vapidPublicKey: null, fuelCloudFillEnabled: false,
-    config: { floorPct: 15, maxFillPct: 90, leadBusinessDays: 1, safetyDays: 1, orderCutoffHour: 10, minDropGal: 3500, loadGal: 7500, usageSafetyPct: 10, usageLookbackDays: 28, priceWindowDays: 60, cheapPct: .33, richPct: .67, digestEnabled: true, digestHour: 7, supplierName: 'Lakes Community Coop', quoteProductPattern: '#2 Clear', quoteBlend: 'auto', holidays: [], tankId: null },
+    config: { floorPct: 15, maxFillPct: 90, leadBusinessDays: 1, safetyDays: 1, orderCutoffHour: 10, minDropGal: 3500, loadGal: 7500, usageSafetyPct: 10, usageLookbackDays: 28, priceWindowDays: 60, cheapPct: .33, richPct: .67, digestEnabled: true, digestHour: 7, supplierName: 'Lakes Community Coop', quoteProductPattern: '\\bRM\\b', quoteBlend: 'auto', holidays: [], tankId: null },
     tank: { id: 4411, name: 'Diesel', productName: 'ULSD #2 B5', site: 'Perham shop', readAt: new Date().toISOString(), inventoryGal: inv, capacityGal: 10000 },
     usage: { weekdayAvg: 520, weekendAvg: 40, avg7: 380, avgLookback: 385, sampleDays: 28 },
     hoDaily, quotes, tankHistory, deliveries: { a: { date: d(-10), gallons: 7400, pricePerGal: 5.61, total: 41514, invoice: '184420', postedToFuelCloud: false } },
     alerts: { a: { at: new Date(Date.now() - 86400e3 * 3).toISOString(), title: 'FuelDesk: Hold', body: '6,980 gal, order by Thu (6d). Quote $5.72; HO $4.52 (-0.4%).' } },
-    latestSheet: { date: today, blend: 'B5', picked: { label: 'B5 #2 Clear B5' }, spot: { 'B5 FM B5': 5.25, 'B5 #2 DYED B5': 5.20, 'B5 RM B5': 5.81, 'B5 #2 Clear B5': q.price, 'N/L 87': 3.91 } },
+    latestSheet: { date: today, blend: 'B5', picked: { label: 'B5 RM B5' }, spot: { 'B5 FM B5': 5.25, 'B5 #2 DYED B5': 5.20, 'B5 RM B5': q.price, 'B5 #2 Clear B5': +(q.price - 0.05).toFixed(3), 'N/L 87': 3.91 } },
     plan: {
       state: 'HOLD', watch: daysToOrderBy <= 7, headline: `Hold — mid-range price, ${daysToOrderBy} day${daysToOrderBy === 1 ? '' : 's'} until you need to order (${fmtD(orderBy)}).`, recommendedGal: 0,
       reasons: [`Tank: ${fmtGal(inv)} gal of 10,000 gal (${Math.round(inv / 100)}%). Planning burn ≈ 572 gal on weekdays, 44 on weekends. You reach the 20% floor (2,000 gal) around ${fmtD(floor)}.`, `Lead time 2 business days + 1 safety day → fuel must land by ${fmtD(needBy)}; last day to order is ${fmtD(orderBy)}.`, `HO futures ${money(live, 3)} (down 0.4% vs. prior settle), 52nd percentile of the last 60 days (middle of the range), -1.1% over 5 sessions.`, `Lakes Community Coop quote: ${money(q.price, 3)}/gal today; your basis over HO runs about $1.05, so tomorrow's sheet should be near ${money(live + 1.05, 2)}.`, `Lakes Community Coop's contract strip: Nov 2026, Dec 2026, Jan 2027 average $5.13 — -10.6% vs. today's spot. The market expects lower prices; buy what you need, not a full fill, and consider locking that forward volume.`, 'Watch: order-by date is inside the next 7 days — any dip is a buying chance.'],
@@ -732,8 +734,8 @@ function DEMO_STATUS() {
       timing: { floorYmd: floor, daysToFloor: Math.round((ymdDate(floor) - ymdDate(today)) / 86400000 * 10) / 10, orderBy, daysToOrderBy, arrivalIfOrderedNow: arrive, needBy, cutoffHour: 10 },
       projection: proj, usage: { weekdayAvg: 520, weekendAvg: 40 },
       price: { live, prevClose: live + .018, sessionYmd: today, pctRank: .52, chg5d: -.011, intraday: -.004, windowMin: Math.min(...Object.values(hoDaily)), windowMax: Math.max(...Object.values(hoDaily)), windowMedian: live, curveSlope: -.021, nextMonth: { symbol: 'HOZ26.NYM', price: live * .979 } },
-      quote: { ymd: today, price: q.price, product: 'B5 #2 Clear B5', isToday: true, source: 'sheet' },
-      supplierCurve: { row: 'RM Transport #2', offset: -0.05, sheetDate: today, months: ['Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027', 'Jul 2027', 'Aug 2027', 'Sep 2027', 'Oct 2027'], prices: [5.40, 5.00, 5.00, 4.93, 4.92, 5.01, 4.92, 4.83, 4.77, 4.72, 4.74, 4.66] },
+      quote: { ymd: today, price: q.price, product: 'B5 RM B5', isToday: true, source: 'sheet' },
+      supplierCurve: { row: 'RM Transport #2', offset: 0, sheetDate: today, months: ['Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027', 'Jul 2027', 'Aug 2027', 'Sep 2027', 'Oct 2027'], prices: [5.40, 5.00, 5.00, 4.93, 4.92, 5.01, 4.92, 4.83, 4.77, 4.72, 4.74, 4.66] },
       contractView: { avg3: 5.133, vsSpot: -.106 }, basis: { median: 1.05, samples: 12 }, estDelivered: live + 1.05, dollarImpact: null,
     },
   };

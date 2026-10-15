@@ -1,16 +1,32 @@
 {
+  "id": "/fueldesk/",
   "name": "FuelDesk — diesel buy advisor",
   "short_name": "FuelDesk",
   "description": "Tank level, futures, supplier price, and when to order diesel for Steve's Sanitation.",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/fueldesk/",
+  "scope": "/fueldesk/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#15171a",
   "theme_color": "#15171a",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

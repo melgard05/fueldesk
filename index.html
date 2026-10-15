@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FuelDesk</title>
+<meta name="description" content="Diesel buy advisor — tank level, futures, supplier price, and when to order.">
+<meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FuelDesk">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f6f5f1;
+    --surface: #fcfcfb;
+    --surface-2: #f0efea;
+    --ink: #141516;
+    --ink-2: #5a5b58;
+    --ink-3: #8a8983;
+    --line: #e1e0d9;
+    --line-2: #c9c8c0;
+    --amber: #c7811a;         /* diesel */
+    --amber-soft: rgba(199,129,26,.18);
+    --ho: #2a78d6;            /* series 1: HO futures */
+    --quote: #eb6834;         /* series 2: supplier quote */
+    --s-critical: #d03b3b;
+    --s-serious: #ec835a;
+    --s-good: #0ca30c;
+    --s-hold: #4a6a85;
+    --good-text: #006300;
+    --focus: #2a78d6;
+    --radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #15171a;
+      --surface: #1d2024;
+      --surface-2: #24282d;
+      --ink: #eceae4;
+      --ink-2: #b7b6ae;
+      --ink-3: #85857f;
+      --line: #2c3035;
+      --line-2: #3b4047;
+      --amber: #e0a23c;
+      --amber-soft: rgba(224,162,60,.2);
+      --ho: #3987e5;
+      --quote: #e3703f;
+      --s-hold: #7f9db8;
+      --good-text: #0ca30c;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #15171a; --surface: #1d2024; --surface-2: #24282d; --ink: #eceae4; --ink-2: #b7b6ae; --ink-3: #85857f;
+    --line: #2c3035; --line-2: #3b4047; --amber: #e0a23c; --amber-soft: rgba(224,162,60,.2); --ho: #3987e5; --quote: #e3703f; --s-hold: #7f9db8; --good-text: #0ca30c;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  }
+  a { color: inherit; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 18px 0 10px; }
+  header.top h1 { font-size: 20px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+  header.top .meta { color: var(--ink-3); font-size: 13px; text-align: right; }
+  header.top .meta b { color: var(--ink-2); font-weight: 500; }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 900px) { .grid { grid-template-columns: 7fr 5fr; align-items: start; } .col { display: grid; gap: 14px; } }
+
+  .grid > *, .col > *, .card { min-width: 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; overflow-wrap: anywhere; }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .card h2 small { color: var(--ink-3); font-weight: 400; font-size: 13px; }
+  .muted { color: var(--ink-3); }
+  .sec { color: var(--ink-2); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ── the board ───────────────────────────────────────────────────────── */
+  .board { position: relative; padding: 18px 18px 16px 26px; border-left: 10px solid var(--state, var(--s-hold)); }
+  .board .state { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: var(--state, var(--s-hold)); }
+  .board .state .ico { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--state, var(--s-hold)); color: #fff; font-size: 13px; font-weight: 700; }
+  .board .headline { font-size: 26px; line-height: 1.2; font-weight: 650; letter-spacing: -.015em; margin: 8px 0 10px; max-width: 34ch; }
+  @media (max-width: 480px) { .board .headline { font-size: 22px; } }
+  .board .facts { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--ink-2); font-size: 14px; }
+  .board .facts b { color: var(--ink); font-weight: 600; }
+  .board details { margin-top: 12px; }
+  .board summary { cursor: pointer; color: var(--ink-2); font-size: 14px; width: max-content; }
+  .board ul { margin: 8px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 14px; }
+  .board li + li { margin-top: 5px; }
+  .board .problems { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--line); font-size: 14px; color: var(--ink-2); }
+  .board .problems b { color: var(--s-critical); }
+
+  /* ── tank ────────────────────────────────────────────────────────────── */
+  .hero { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .hero .big { font-size: 34px; font-weight: 650; letter-spacing: -.02em; line-height: 1; }
+  .hero .unit { color: var(--ink-2); font-size: 15px; }
+  .gauge { margin: 14px 0 6px; }
+  .gauge svg { width: 100%; height: 58px; display: block; overflow: visible; }
+  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 14px; margin-top: 12px; }
+  .kv div { font-size: 13px; color: var(--ink-3); }
+  .kv div b { display: block; color: var(--ink); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* ── charts ──────────────────────────────────────────────────────────── */
+  .chart { position: relative; margin-top: 10px; }
+  .chart svg { display: block; width: 100%; max-width: 100%; height: auto; overflow: visible; }
+  .chart .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--page); font-size: 12px; line-height: 1.35; padding: 6px 8px; border-radius: 4px; white-space: nowrap; transform: translate(-50%, calc(-100% - 10px)); display: none; z-index: 2; }
+  .chart .tip b { font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--c); vertical-align: middle; margin-right: 6px; }
+  .legend span.dot::before { width: 8px; height: 8px; border-radius: 50%; }
+  .legend span.dash::before { background: repeating-linear-gradient(90deg, var(--c) 0 3px, transparent 3px 6px); }
+  details.table { margin-top: 6px; font-size: 13px; }
+  details.table summary { color: var(--ink-3); cursor: pointer; width: max-content; }
+  details.table table { border-collapse: collapse; margin-top: 6px; width: 100%; }
+  details.table th, details.table td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  details.table th:first-child, details.table td:first-child { text-align: left; }
+  details.table th { color: var(--ink-3); font-weight: 500; }
+  details.table .scroll { max-height: 220px; overflow: auto; }
+
+  /* ── price ───────────────────────────────────────────────────────────── */
+  .pricegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  .pricegrid .v { font-size: 26px; font-weight: 650; letter-spacing: -.02em; line-height: 1.1; }
+  .pricegrid .l { font-size: 13px; color: var(--ink-3); }
+  .pricegrid .d { font-size: 13px; color: var(--ink-2); }
+  .pricegrid .d.up { color: var(--s-critical); } .pricegrid .d.down { color: var(--good-text); }
+  .range { margin-top: 12px; }
+  .range svg { width: 100%; height: 34px; display: block; overflow: visible; }
+  .range .cap { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+  /* ── lists & forms ───────────────────────────────────────────────────── */
+  table.list { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.list th { text-align: left; color: var(--ink-3); font-weight: 500; font-size: 12.5px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  table.list td { padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.list td.n, table.list th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  table.list tr:last-child td { border-bottom: 0; }
+  .empty { color: var(--ink-3); font-size: 14px; padding: 6px 0; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { border: 1px solid var(--line-2); background: var(--surface); border-radius: var(--radius); padding: 7px 12px; cursor: pointer; font-size: 14px; }
+  .btn:hover { background: var(--surface-2); }
+  .btn.primary { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .btn.primary:hover { opacity: .9; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  form.f { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 10px; }
+  form.f label { font-size: 12.5px; color: var(--ink-3); display: grid; gap: 4px; }
+  form.f input, form.f select { border: 1px solid var(--line-2); background: var(--surface); border-radius: var(--radius); padding: 7px 9px; width: 100%; }
+  form.f .span { grid-column: 1 / -1; }
+  form.f .check { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 14px; }
+  form.f .check input { width: auto; }
+  .help { font-size: 13px; color: var(--ink-3); margin-top: 8px; }
+  .help code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; background: var(--surface-2); padding: 1px 4px; border-radius: 3px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--page); padding: 10px 14px; border-radius: var(--radius); font-size: 14px; display: none; z-index: 10; max-width: calc(100vw - 32px); }
+  .toast.show { display: block; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+  .sheet-grid { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; font-size: 13.5px; }
+  .sheet-grid .n { text-align: right; font-variant-numeric: tabular-nums; }
+  .sheet-grid .pick { font-weight: 600; color: var(--ink); }
+  .connect { display: grid; gap: 10px; }
+  .hidden { display: none !important; }
+  footer { color: var(--ink-3); font-size: 12.5px; margin-top: 18px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>FuelDesk</h1>
+    <div class="meta" id="meta">—</div>
+  </header>
+
+  <!-- first-run connection panel -->
+  <section class="card hidden" id="connect">
+    <h2>Connect to your Worker</h2>
+    <div class="connect">
+      <form class="f" id="connectForm">
+        <label class="span">Worker URL <input id="cWorker" placeholder="https://fueldesk.<you>.workers.dev" autocomplete="off"></label>
+        <label class="span">App key <input id="cKey" placeholder="the APP_KEY secret" autocomplete="off"></label>
+        <div class="span row"><button class="btn primary" type="submit">Connect</button> <span class="help">Saved on this device. On a PC that wipes storage, bookmark <code>…/#w=WORKER_URL&amp;k=APP_KEY</code> instead.</span></div>
+      </form>
+    </div>
+  </section>
+
+  <div class="grid" id="app">
+    <div class="col">
+      <section class="card board" id="board">
+        <div class="state"><span class="ico" id="stateIco">·</span><span id="stateLabel">Loading</span></div>
+        <div class="headline" id="headline">Checking the tank and the market…</div>
+        <div class="facts" id="facts"></div>
+        <details id="whyWrap"><summary>Why</summary><ul id="why"></ul></details>
+        <div class="problems hidden" id="problems"></div>
+      </section>
+
+      <section class="card" id="tankCard">
+        <h2>Tank <small id="tankName"></small></h2>
+        <div class="hero"><span class="big num" id="tankGal">—</span><span class="unit" id="tankCap"></span></div>
+        <div class="gauge" id="gauge"></div>
+        <div class="kv" id="tankKv"></div>
+        <div class="chart" id="projChart"></div>
+        <div class="legend" id="projLegend"></div>
+        <details class="table" id="projTable"><summary>Show as table</summary></details>
+      </section>
+
+      <section class="card" id="deliveriesCard">
+        <h2>Deliveries <small>log each drop so the basis learns</small></h2>
+        <div id="deliveries"></div>
+        <form class="f" id="deliveryForm">
+          <label>Date <input type="date" name="date" required></label>
+          <label>Gallons <input type="number" name="gallons" min="1" step="1" inputmode="decimal" required></label>
+          <label>$/gal <input type="number" name="pricePerGal" min="0" step="0.0001" inputmode="decimal" placeholder="5.76"></label>
+          <label>Invoice # <input name="invoice" placeholder="optional"></label>
+          <label class="check span"><input type="checkbox" name="postToFuelCloud" id="postFc"> Also record this fill in FuelCloud <span class="muted" id="postFcNote"></span></label>
+          <div class="span row"><button class="btn primary" type="submit">Log delivery</button></div>
+        </form>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card" id="priceCard">
+        <h2>Price <small id="priceAsOf"></small></h2>
+        <div class="pricegrid">
+          <div><div class="v num" id="quoteV">—</div><div class="l" id="quoteL">Supplier quote</div><div class="d" id="quoteD"></div></div>
+          <div><div class="v num" id="hoV">—</div><div class="l" id="hoL">HO futures, front month</div><div class="d" id="hoD"></div></div>
+        </div>
+        <div class="range" id="range"></div>
+        <div class="chart" id="priceChart"></div>
+        <div class="legend" id="priceLegend"></div>
+        <details class="table" id="priceTable"><summary>Show as table</summary></details>
+        <form class="f" id="quoteForm">
+          <label>Date <input type="date" name="date"></label>
+          <label>Quoted $/gal <input type="number" name="price" min="0" step="0.0001" inputmode="decimal" placeholder="5.76"></label>
+          <div class="row" style="align-self:end"><button class="btn" type="submit">Save quote</button></div>
+          <div class="help span">Normally the daily sheet arrives on its own; use this if a day is missing.</div>
+        </form>
+      </section>
+
+      <section class="card" id="stripCard">
+        <h2>Contract strip <small id="stripMeta"></small></h2>
+        <div class="chart" id="stripChart"></div>
+        <div class="legend" id="stripLegend"></div>
+        <details class="table" id="stripTable"><summary>Show as table</summary></details>
+        <details class="table" id="sheetDetails"><summary>Today's sheet, all lines</summary><div id="sheetLines"></div></details>
+      </section>
+
+      <section class="card" id="alertsCard">
+        <h2>Alerts <small id="pushMeta"></small></h2>
+        <div class="row">
+          <button class="btn" id="btnPush">Turn on notifications on this device</button>
+          <button class="btn" id="btnTestPush">Send a test</button>
+          <button class="btn" id="btnRun">Run the check now</button>
+        </div>
+        <div id="alerts" style="margin-top:10px"></div>
+      </section>
+
+      <section class="card" id="settingsCard">
+        <h2>Settings <small>how the advice is computed</small></h2>
+        <form class="f" id="settingsForm">
+          <label>Supplier lead time (business days) <input type="number" name="leadBusinessDays" min="0" max="10" step="1"></label>
+          <label>Safety days before the floor <input type="number" name="safetyDays" min="0" max="10" step="1"></label>
+          <label>Order cutoff hour (24h) <input type="number" name="orderCutoffHour" min="0" max="23" step="1"></label>
+          <label>Floor (% of tank) <input type="number" name="floorPct" min="0" max="60" step="1"></label>
+          <label>Max fill (% of tank) <input type="number" name="maxFillPct" min="50" max="100" step="1"></label>
+          <label>Full load (gal) <input type="number" name="loadGal" min="0" step="50"></label>
+          <label>Smallest load worth taking (gal) <input type="number" name="minDropGal" min="0" step="50"></label>
+          <label>Usage safety margin (%) <input type="number" name="usageSafetyPct" min="0" max="50" step="1"></label>
+          <label>Usage lookback (days) <input type="number" name="usageLookbackDays" min="7" max="90" step="1"></label>
+          <label>Price window (days) <input type="number" name="priceWindowDays" min="20" max="180" step="1"></label>
+          <label>Cheap below percentile <input type="number" name="cheapPct" min="0.05" max="0.5" step="0.01"></label>
+          <label>Expensive above percentile <input type="number" name="richPct" min="0.5" max="0.95" step="0.01"></label>
+          <label>Morning digest hour <input type="number" name="digestHour" min="5" max="12" step="1"></label>
+          <label class="check"><input type="checkbox" name="digestEnabled"> Send the morning digest</label>
+          <label>Product line on the sheet (regex) <input name="quoteProductPattern" placeholder="#2 Clear"></label>
+          <label>Blend <select name="quoteBlend"><option value="auto">Follow the sheet (B5/B20 months)</option><option value="B5">B5</option><option value="B20">B20</option></select></label>
+          <label>FuelCloud tank <select name="tankId" id="tankSelect"><option value="">First diesel tank</option></select></label>
+          <label class="span">Extra closed days (YYYY-MM-DD, comma-separated) <input name="holidays" placeholder="2026-12-24, 2026-12-31"></label>
+          <div class="span row"><button class="btn primary" type="submit">Save settings</button> <button class="btn" type="button" id="btnFcTest">Test FuelCloud connection</button> <button class="btn" type="button" id="btnDisconnect">Disconnect this device</button></div>
+          <div class="help span" id="fcTestOut"></div>
+        </form>
+      </section>
+    </div>
+  </div>
+  <footer id="foot"></footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+// ───────────────────────────── connection ─────────────────────────────
+const LS = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }, del: (k) => { try { localStorage.removeItem(k); } catch {} } };
+const $ = (id) => document.getElementById(id);
+const DEMO = new URLSearchParams(location.search).get('demo') === '1';
+let conn = { worker: LS.get('fd.worker') || '', key: LS.get('fd.key') || '' };
+(function importHash() {
+  const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+  if (h.get('w') || h.get('k')) {
+    conn = { worker: (h.get('w') || conn.worker).replace(/\/+$/, ''), key: h.get('k') || conn.key };
+    LS.set('fd.worker', conn.worker); LS.set('fd.key', conn.key);
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+})();
+
+const api = async (path, opts = {}) => {
+  if (DEMO) return demoApi(path, opts);
+  const r = await fetch(conn.worker + path, {
+    method: opts.method || 'GET',
+    headers: { 'Content-Type': 'application/json', 'X-App-Key': conn.key },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+};
+
+// ───────────────────────────── helpers ────────────────────────────────
+const fmtGal = (v) => v == null ? '—' : Math.round(v).toLocaleString('en-US');
+const money = (v, d = 2) => v == null || !isFinite(v) ? '—' : '$' + Number(v).toFixed(d);
+const pctS = (v, d = 1) => v == null ? '' : (v >= 0 ? '+' : '') + (v * 100).toFixed(d) + '%';
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const ymdDate = (ymd) => new Date(ymd + 'T12:00:00Z');
+const fmtD = (ymd, dow = true) => { if (!ymd) return '—'; const d = ymdDate(ymd); const s = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }); return dow ? `${DOW[d.getUTCDay()]} ${s}` : s; };
+const fmtTime = (iso) => iso ? new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const STATE = {
+  ORDER_NOW: { label: 'Order now', color: 'var(--s-critical)', ico: '!' },
+  BUY_AHEAD: { label: 'Buy ahead', color: 'var(--s-serious)', ico: '↑' },
+  FILL_UP: { label: 'Good day to order', color: 'var(--s-good)', ico: '✓' },
+  HOLD: { label: 'Hold', color: 'var(--s-hold)', ico: '–' },
+};
+let toastT; const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3500); };
+
+// ───────────────────────────── SVG charts ─────────────────────────────
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs = {}, text) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text != null) e.textContent = text; return e; };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+/** generic time-series chart: series = [{name, color, points:[{x:Date, y}], kind:'line'|'dots', dashed}] */
+function lineChart(host, { series, hlines = [], vlines = [], yFmt = (v) => v, xFmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), height = 210, yMin, yMax, tipFmt }) {
+  host.innerHTML = '';
+  const W = Math.max(280, host.clientWidth || 320), H = height, m = { t: 12, r: 14, b: 26, l: 46 };
+  const all = series.flatMap(s => s.points);
+  if (!all.length) { host.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+  const xs = all.map(p => +p.x), ys = all.map(p => p.y).concat(hlines.map(h => h.y)).filter(v => isFinite(v));
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  let lo = yMin ?? Math.min(...ys), hi = yMax ?? Math.max(...ys);
+  if (hi === lo) { hi += 1; lo -= 1; }
+  if (yMin == null) lo -= (hi - lo) * 0.06; if (yMax == null) hi += (hi - lo) * 0.06;
+  const X = (t) => m.l + (W - m.l - m.r) * ((+t - x0) / Math.max(1, x1 - x0));
+  const Y = (v) => m.t + (H - m.t - m.b) * (1 - (v - lo) / (hi - lo));
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img' });
+  const clipId = 'clip' + Math.random().toString(36).slice(2, 8);
+  const defs = el('defs'); const cp = el('clipPath', { id: clipId }); cp.append(el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b })); defs.append(cp); svg.append(defs);
+  // grid
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const v = lo + (hi - lo) * i / ticks;
+    svg.append(el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css('--line'), 'stroke-width': 1 }));
+    svg.append(el('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--ink-3') }, yFmt(v)));
+  }
+  // x labels
+  const span = x1 - x0, nx = W < 420 ? 3 : 5;
+  for (let i = 0; i <= nx; i++) {
+    const t = x0 + span * i / nx;
+    svg.append(el('text', { x: X(t), y: H - 8, 'text-anchor': i === 0 ? 'start' : i === nx ? 'end' : 'middle', 'font-size': 11, fill: css('--ink-3') }, xFmt(new Date(t))));
+  }
+  for (const h of hlines) {
+    svg.append(el('line', { x1: m.l, x2: W - m.r, y1: Y(h.y), y2: Y(h.y), stroke: h.color, 'stroke-width': 1.5, 'stroke-dasharray': h.dashed ? '5 4' : 'none', opacity: .9 }));
+    if (h.label) svg.append(el('text', { x: W - m.r, y: Y(h.y) - 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--ink-2') }, h.label));
+  }
+  for (const v of vlines) {
+    if (+v.x < x0 || +v.x > x1) continue;
+    svg.append(el('line', { x1: X(v.x), x2: X(v.x), y1: m.t, y2: H - m.b, stroke: v.color, 'stroke-width': 1.5, 'stroke-dasharray': v.dashed ? '3 3' : 'none' }));
+    if (v.label) { const right = X(v.x) > W - m.r - 70; svg.append(el('text', { x: X(v.x) + (right ? -4 : 4), y: m.t + 10 + (v.dy || 0), 'text-anchor': right ? 'end' : 'start', 'font-size': 11, fill: css('--ink-2') }, v.label)); }
+  }
+  for (const s of series) {
+    const pts = s.points.filter(p => isFinite(p.y)).sort((a, b) => a.x - b.x);
+    if (s.area) {
+      const d = `M${X(pts[0].x)},${Y(lo)} ` + pts.map(p => `L${X(p.x)},${Y(p.y)}`).join(' ') + ` L${X(pts[pts.length - 1].x)},${Y(lo)} Z`;
+      svg.append(el('path', { d, fill: s.color, opacity: s.areaOpacity ?? .12, 'clip-path': `url(#${clipId})` }));
+    }
+    if (s.kind !== 'dots') {
+      const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.x)},${Y(p.y)}`).join(' ');
+      svg.append(el('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': s.dashed ? '4 4' : 'none', 'clip-path': `url(#${clipId})` }));
+    }
+    if (s.kind === 'dots' || (s.dots && pts.length <= 30)) for (const p of pts) svg.append(el('circle', { cx: X(p.x), cy: Y(p.y), r: 4, fill: s.color, stroke: css('--surface'), 'stroke-width': 2 }));
+    if (s.endLabel && pts.length) { const p = pts[pts.length - 1]; svg.append(el('text', { x: X(p.x) + 6, y: Y(p.y) + 4, 'font-size': 11, 'font-weight': 600, fill: css('--ink') }, s.endLabel(p))); }
+  }
+  // hover layer
+  const cross = el('line', { y1: m.t, y2: H - m.b, stroke: css('--ink-3'), 'stroke-width': 1, opacity: 0 });
+  svg.append(cross);
+  const hit = el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' });
+  svg.append(hit);
+  const tip = document.createElement('div'); tip.className = 'tip';
+  host.append(svg, tip);
+  const byX = series.map(s => ({ s, pts: s.points.filter(p => isFinite(p.y)).sort((a, b) => a.x - b.x) }));
+  const show = (clientX) => {
+    const r = svg.getBoundingClientRect();
+    const t = x0 + (x1 - x0) * Math.min(1, Math.max(0, (clientX - r.left - m.l * r.width / W) / ((W - m.l - m.r) * r.width / W)));
+    let lines = [], tx = t;
+    for (const { s, pts } of byX) {
+      if (!pts.length) continue;
+      let best = pts[0]; for (const p of pts) if (Math.abs(p.x - t) < Math.abs(best.x - t)) best = p;
+      if (Math.abs(best.x - t) > (x1 - x0) / 12 + 86400000) continue;
+      lines.push(`<span style="color:${s.color}">●</span> ${esc(s.name)}: <b>${esc(tipFmt ? tipFmt(s, best) : yFmt(best.y))}</b>`); tx = best.x;
+    }
+    if (!lines.length) { tip.style.display = 'none'; cross.setAttribute('opacity', 0); return; }
+    tip.innerHTML = `<div>${esc(xFmt(new Date(tx)))}</div>` + lines.join('<br>');
+    tip.style.display = 'block';
+    const px = X(tx) * r.width / W;
+    tip.style.left = Math.min(Math.max(px, 70), r.width - 70) + 'px'; tip.style.top = (m.t * r.height / H) + 'px';
+    cross.setAttribute('x1', X(tx)); cross.setAttribute('x2', X(tx)); cross.setAttribute('opacity', .6);
+  };
+  hit.addEventListener('pointermove', e => show(e.clientX));
+  hit.addEventListener('pointerdown', e => show(e.clientX));
+  hit.addEventListener('pointerleave', () => { tip.style.display = 'none'; cross.setAttribute('opacity', 0); });
+}
+
+function barChart(host, { bars, color, ref, refLabel, height = 170, yFmt = (v) => v }) {
+  host.innerHTML = '';
+  if (!bars?.length) { host.innerHTML = '<div class="empty">No contract strip yet — it comes from the daily sheet.</div>'; return; }
+  const W = Math.max(280, host.clientWidth || 320), H = height, m = { t: 14, r: 10, b: 24, l: 44 };
+  const ys = bars.map(b => b.y).concat(ref != null ? [ref] : []);
+  const lo = Math.min(...ys) * 0.985, hi = Math.max(...ys) * 1.01;
+  const Y = (v) => m.t + (H - m.t - m.b) * (1 - (v - lo) / (hi - lo));
+  const bw = (W - m.l - m.r) / bars.length;
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img' });
+  for (let i = 0; i <= 3; i++) { const v = lo + (hi - lo) * i / 3; svg.append(el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css('--line') })); svg.append(el('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--ink-3') }, yFmt(v))); }
+  const minI = bars.reduce((b, x, i) => x.y < bars[b].y ? i : b, 0);
+  bars.forEach((b, i) => {
+    const x = m.l + i * bw + 2, w = Math.max(2, bw - 4), y = Y(b.y), h = H - m.b - y;
+    const r = el('rect', { x, y, width: w, height: Math.max(0, h), fill: color, rx: 3 });
+    svg.append(r);
+    if (i % (W < 420 ? 3 : 2) === 0) svg.append(el('text', { x: x + w / 2, y: H - 7, 'text-anchor': 'middle', 'font-size': 11, fill: css('--ink-3') }, b.label.replace(/ 20/, " '")));
+    if (i === 0 || i === minI) svg.append(el('text', { x: x + w / 2, y: y - 4, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 600, fill: css('--ink') }, yFmt(b.y)));
+    const hit = el('rect', { x: m.l + i * bw, y: m.t, width: bw, height: H - m.t - m.b, fill: 'transparent' });
+    hit.addEventListener('pointerenter', () => { tip.innerHTML = `<div>${esc(b.label)}</div><b>${esc(yFmt(b.y))}</b>`; tip.style.display = 'block'; const rr = svg.getBoundingClientRect(); tip.style.left = ((x + w / 2) * rr.width / W) + 'px'; tip.style.top = (y * rr.height / H) + 'px'; });
+    hit.addEventListener('pointerleave', () => tip.style.display = 'none');
+    svg.append(hit);
+  });
+  if (ref != null) { svg.append(el('line', { x1: m.l, x2: W - m.r, y1: Y(ref), y2: Y(ref), stroke: css('--ink-2'), 'stroke-width': 1.5, 'stroke-dasharray': '5 4' })); svg.append(el('text', { x: W - m.r, y: Y(ref) - 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--ink-2') }, refLabel)); }
+  const tip = document.createElement('div'); tip.className = 'tip';
+  host.append(svg, tip);
+}
+
+function tableView(host, header, rows) {
+  const old = host.querySelector('.scroll'); if (old) old.remove();
+  const d = document.createElement('div'); d.className = 'scroll';
+  d.innerHTML = `<table><thead><tr>${header.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  host.append(d);
+}
+
+function gauge(host, { inv, cap, floorGal, maxFillGal }) {
+  host.innerHTML = '';
+  const W = Math.max(280, host.clientWidth || 320), H = 58, x0 = 6, x1 = W - 6, y0 = 8, h = 26;
+  const X = (g) => x0 + (x1 - x0) * Math.min(1, Math.max(0, g / cap));
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': `Tank ${fmtGal(inv)} of ${fmtGal(cap)} gallons` });
+  svg.append(el('rect', { x: x0, y: y0, width: x1 - x0, height: h, rx: 13, fill: css('--surface-2'), stroke: css('--line-2') }));
+  svg.append(el('rect', { x: x0 + 1.5, y: y0 + 1.5, width: Math.max(0, X(inv) - x0 - 3), height: h - 3, rx: 11.5, fill: css('--amber'), opacity: .85 }));
+  for (const [g, label] of [[floorGal, `floor ${fmtGal(floorGal)}`], [maxFillGal, `max fill ${fmtGal(maxFillGal)}`]]) {
+    svg.append(el('line', { x1: X(g), x2: X(g), y1: y0 - 3, y2: y0 + h + 3, stroke: css('--ink-2'), 'stroke-width': 1.5 }));
+    svg.append(el('text', { x: X(g), y: y0 + h + 16, 'text-anchor': g === floorGal ? 'start' : 'end', 'font-size': 11, fill: css('--ink-3') }, label));
+  }
+  host.append(svg);
+}
+
+function rangeMeter(host, p, quote) {
+  host.innerHTML = '';
+  if (!p) return;
+  const W = Math.max(280, host.clientWidth || 320), H = 34, x0 = 4, x1 = W - 4, y = 14;
+  const lo = p.windowMin, hi = p.windowMax, X = (v) => x0 + (x1 - x0) * Math.min(1, Math.max(0, (v - lo) / Math.max(1e-6, hi - lo)));
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img' });
+  svg.append(el('rect', { x: x0, y: y - 4, width: x1 - x0, height: 8, rx: 4, fill: css('--surface-2'), stroke: css('--line') }));
+  // cheap / rich zones as subtle washes from the percentile thresholds (approximate with rank positions)
+  svg.append(el('rect', { x: x0, y: y - 4, width: Math.max(0, X(p.cheapAt ?? lo) - x0), height: 8, rx: 4, fill: css('--s-good'), opacity: .25 }));
+  svg.append(el('rect', { x: X(p.richAt ?? hi), y: y - 4, width: Math.max(0, x1 - X(p.richAt ?? hi)), height: 8, rx: 4, fill: css('--s-critical'), opacity: .22 }));
+  svg.append(el('line', { x1: X(p.windowMedian), x2: X(p.windowMedian), y1: y - 8, y2: y + 8, stroke: css('--ink-3'), 'stroke-width': 1.5 }));
+  svg.append(el('circle', { cx: X(p.live), cy: y, r: 7, fill: css('--ho'), stroke: css('--surface'), 'stroke-width': 2 }));
+  svg.append(el('text', { x: X(p.live), y: y + 19, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 600, fill: css('--ink') }, `HO ${money(p.live, 3)}`));
+  host.append(svg);
+  const cap = document.createElement('div'); cap.className = 'cap';
+  cap.innerHTML = `<span>60-day low ${money(lo, 3)}</span><span>median ${money(p.windowMedian, 3)}</span><span>high ${money(hi, 3)}</span>`;
+  host.append(cap);
+}
+
+// ───────────────────────────── rendering ──────────────────────────────
+let S = null;   // last status payload
+function render(s) {
+  S = s;
+  const p = s.plan, cfg = s.config || {};
+  const localTime = (s.serverTime && p?.computedAt) ? fmtTime(p.computedAt) : '—';
+  $('meta').innerHTML = `last check <b>${esc(localTime)}</b>${p?.lastRun?.trigger ? ` <span class="muted">(${esc(p.lastRun.trigger)})</span>` : ''}`;
+
+  // board
+  const st = STATE[p?.state] || STATE.HOLD;
+  $('board').style.setProperty('--state', st.color);
+  $('stateIco').textContent = st.ico;
+  $('stateLabel').textContent = p ? st.label + (p.watch ? ' — watch the order-by date' : '') : 'No plan yet';
+  $('headline').textContent = p?.headline || 'Run the check to get a recommendation.';
+  const t = p?.timing || {}, tk = p?.tank || {};
+  const facts = [];
+  if (p?.recommendedGal) facts.push(`Suggested order <b>${fmtGal(p.recommendedGal)} gal</b>`);
+  if (t.orderBy) facts.push(`Order by <b>${fmtD(t.orderBy)}</b>${t.daysToOrderBy === 0 ? ` <span class="muted">before ${t.cutoffHour}:00</span>` : ''}`);
+  else if (t.late) facts.push(`<b>Past the safe order date</b>`);
+  if (t.arrivalIfOrderedNow) facts.push(`Order now → arrives <b>${fmtD(t.arrivalIfOrderedNow)}</b>`);
+  if (t.floorYmd) facts.push(`Floor reached <b>${fmtD(t.floorYmd)}</b>`);
+  if (t.fullLoadFits === false && t.windowOpenYmd) facts.push(`Full load fits from <b>${fmtD(t.windowOpenYmd)}</b>`);
+  if (p?.quote) facts.push(`${p.quote.source === 'delivery' ? 'Delivered' : 'Quoted'} <b>${money(p.quote.price, 3)}</b>${p.quote.isToday ? '' : ` <span class="muted">(${fmtD(p.quote.ymd, false)})</span>`}`);
+  if (p?.dollarImpact != null && p.recommendedGal) facts.push(`vs. 60-day median <b>${p.dollarImpact <= 0 ? '−' : '+'}$${Math.abs(p.dollarImpact).toLocaleString('en-US')}</b>`);
+  $('facts').innerHTML = facts.join('');
+  $('why').innerHTML = (p?.reasons || []).map(r => `<li>${esc(r)}</li>`).join('');
+  $('whyWrap').classList.toggle('hidden', !(p?.reasons || []).length);
+  const probs = p?.problems || [];
+  $('problems').classList.toggle('hidden', !probs.length);
+  $('problems').innerHTML = probs.length ? `<b>Needs attention.</b> ${probs.map(c => esc(PROBLEM[c] || c)).join(' ')}` : '';
+
+  // tank
+  const tank = s.tank || {};
+  $('tankName').textContent = [tank.name, tank.productName, tank.site].filter(Boolean).join(' · ') + (tank.stale ? ' · stale' : '');
+  $('tankGal').textContent = tk.inventoryGal != null ? fmtGal(tk.inventoryGal) : (tank.inventoryGal != null ? fmtGal(tank.inventoryGal) : '—');
+  $('tankCap').textContent = tk.capacityGal ? `of ${fmtGal(tk.capacityGal)} gal · ${Math.round(tk.pct)}%` : '';
+  if (tk.capacityGal) gauge($('gauge'), { inv: tk.inventoryGal, cap: tk.capacityGal, floorGal: tk.floorGal, maxFillGal: tk.maxFillGal }); else $('gauge').innerHTML = '';
+  const u = p?.usage || s.usage || {};
+  $('tankKv').innerHTML = [
+    ['Days to floor', t.daysToFloor != null ? `${t.daysToFloor}` : '60+'],
+    ['Weekday burn', u.weekdayAvg != null ? `${Math.round(u.weekdayAvg)} gal` : '—'],
+    ['Weekend burn', u.weekendAvg != null ? `${Math.round(u.weekendAvg)} gal` : '—'],
+    ['Room now', tk.roomNow != null ? `${fmtGal(tk.roomNow)} gal` : '—'],
+    ['Room at arrival', tk.roomAtArrival != null ? `${fmtGal(tk.roomAtArrival)} gal` : '—'],
+    ['Reading', tank.readAt ? fmtTime(tank.readAt).replace(/^\w+, /, '') : '—'],
+  ].map(([k, v]) => `<div>${k}<b>${esc(v)}</b></div>`).join('');
+
+  // projection chart: history + projection
+  const hist = Object.entries(s.tankHistory || {}).map(([ymd, v]) => ({ x: ymdDate(ymd), y: v.inventoryGal })).filter(x => isFinite(x.y));
+  let proj = (p?.projection || []).map(d => ({ x: ymdDate(d.ymd), y: d.end }));
+  const firstDry = proj.findIndex(d => d.y <= 0);
+  if (firstDry >= 0) { const a = proj[firstDry - 1], b = proj[firstDry]; proj = proj.slice(0, firstDry); if (a && b) { const f = a.y / (a.y - b.y); proj.push({ x: new Date(+a.x + (+b.x - +a.x) * f), y: 0 }); } }
+  if (proj.length && hist.length && hist[hist.length - 1].x < proj[0].x) proj.unshift({ x: hist[hist.length - 1].x, y: hist[hist.length - 1].y });
+  const vl = [];
+  if (t.orderBy) vl.push({ x: ymdDate(t.orderBy), label: 'order by', color: st.color });
+  if (t.arrivalIfOrderedNow) vl.push({ x: ymdDate(t.arrivalIfOrderedNow), label: 'arrives', color: css('--ink-3'), dashed: true, dy: 14 });
+  if (t.floorYmd) vl.push({ x: ymdDate(t.floorYmd), label: 'floor', color: css('--s-critical'), dashed: true, dy: 28 });
+  lineChart($('projChart'), {
+    series: [
+      { name: 'Tank level', color: css('--amber'), points: hist, area: true, areaOpacity: .18 },
+      { name: 'Projected', color: css('--amber'), points: proj, dashed: true },
+    ],
+    hlines: tk.capacityGal ? [{ y: tk.floorGal, label: `floor ${cfg.floorPct ?? ''}%`, color: css('--s-critical'), dashed: true }, { y: tk.maxFillGal, label: 'max fill', color: css('--line-2') }] : [],
+    vlines: vl, yMin: 0, yMax: tk.capacityGal || undefined, yFmt: (v) => fmtGal(v), tipFmt: (sr, pt) => `${fmtGal(pt.y)} gal`,
+  });
+  $('projLegend').innerHTML = `<span style="--c:${css('--amber')}">Tank level</span><span class="dash" style="--c:${css('--amber')}">Projected at planning burn</span><span class="dash" style="--c:${css('--s-critical')}">Floor</span>`;
+  tableView($('projTable'), ['Date', 'Start', 'Usage', 'End'], (p?.projection || []).map(d => [fmtD(d.ymd), fmtGal(d.start), d.usage, fmtGal(d.end)]));
+
+  // price
+  const pr = p?.price, q = p?.quote, lastQ = Object.entries(s.quotes || {}).sort().slice(-2);
+  $('priceAsOf').textContent = pr?.sessionYmd ? `HO session ${fmtD(pr.sessionYmd, false)}` : '';
+  $('quoteV').textContent = q ? money(q.price, 3) : (p?.estDelivered ? `≈ ${money(p.estDelivered, 2)}` : '—');
+  $('quoteL').textContent = q ? `${q.source === 'delivery' ? 'Delivered' : (cfg.supplierName || 'Supplier')}${q.product && q.source !== 'delivery' ? ' · ' + q.product : ''}${q.isToday ? '' : ' · ' + fmtD(q.ymd, false)}` : (p?.estDelivered ? 'Estimated delivered (HO + basis)' : 'No supplier quote yet');
+  let qd = '';
+  if (lastQ.length === 2 && q) { const prev = lastQ[0][1].price; const ch = q.price - prev; qd = `${ch >= 0 ? '▲' : '▼'} ${money(Math.abs(ch), 3)} vs. ${fmtD(lastQ[0][0], false)}`; $('quoteD').className = 'd ' + (ch > 0 ? 'up' : ch < 0 ? 'down' : ''); }
+  else if (p?.basis) qd = `basis over HO ≈ ${money(p.basis.median, 2)} (${p.basis.samples} days)`;
+  $('quoteD').textContent = qd;
+  $('hoV').textContent = pr ? money(pr.live, 3) : '—';
+  $('hoL').textContent = pr ? `HO futures · ${Math.round(pr.pctRank * 100)}th pct of ${cfg.priceWindowDays || 60} days` : 'HO futures';
+  $('hoD').textContent = pr ? `${pr.intraday >= 0 ? '▲' : '▼'} ${(Math.abs(pr.intraday) * 100).toFixed(1)}% vs. settle · 5-day ${pctS(pr.chg5d)}${pr.curveSlope != null ? ` · next month ${pctS(pr.curveSlope)}` : ''}` : '';
+  $('hoD').className = 'd ' + (pr ? (pr.intraday > 0 ? 'up' : pr.intraday < 0 ? 'down' : '') : '');
+  if (pr) {
+    // approximate cheap/rich cut points from the sorted window of closes we have
+    const win = Object.entries(s.hoDaily || {}).filter(([d]) => !pr.sessionYmd || d <= pr.sessionYmd).map(([, v]) => v).filter(isFinite).sort((a, b) => a - b);
+    const at = (f) => win.length ? win[Math.min(win.length - 1, Math.floor(f * win.length))] : null;
+    rangeMeter($('range'), { ...pr, cheapAt: at(cfg.cheapPct ?? .33), richAt: at(cfg.richPct ?? .67) });
+  } else $('range').innerHTML = '';
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 95);
+  const hoPts = Object.entries(s.hoDaily || {}).map(([d, v]) => ({ x: ymdDate(d), y: v })).filter(x => x.x >= cutoff && isFinite(x.y));
+  const qPts = Object.entries(s.quotes || {}).map(([d, v]) => ({ x: ymdDate(d), y: v.price })).filter(x => x.x >= cutoff && isFinite(x.y));
+  lineChart($('priceChart'), {
+    series: [
+      { name: 'HO futures', color: css('--ho'), points: hoPts },
+      { name: cfg.supplierName || 'Supplier quote', color: css('--quote'), points: qPts, kind: qPts.length > 1 ? 'line' : 'dots', dots: true },
+    ],
+    yFmt: (v) => money(v, 2), tipFmt: (sr, pt) => money(pt.y, 3), height: 200,
+  });
+  $('priceLegend').innerHTML = `<span style="--c:${css('--ho')}">HO futures (NY Harbor ULSD, $/gal)</span><span class="dot" style="--c:${css('--quote')}">${esc(cfg.supplierName || 'Supplier')} quote, delivered $/gal</span>`;
+  const days = [...new Set([...hoPts, ...qPts].map(x => x.x.toISOString().slice(0, 10)))].sort().reverse();
+  tableView($('priceTable'), ['Date', 'HO', 'Quote'], days.map(d => [fmtD(d), s.hoDaily?.[d] != null ? money(s.hoDaily[d], 3) : '', s.quotes?.[d] ? money(s.quotes[d].price, 3) : '']));
+
+  // strip
+  const sc = p?.supplierCurve, cv = p?.contractView;
+  $('stripMeta').textContent = sc ? `${sc.row}${sc.offset ? ` adjusted ${sc.offset > 0 ? '+' : ''}${sc.offset.toFixed(2)} to your line` : ''} · sheet ${fmtD(sc.sheetDate || s.latestSheet?.date, false)}` : '';
+  barChart($('stripChart'), { bars: sc ? sc.months.map((mth, i) => ({ label: mth, y: sc.prices[i] })) : [], color: css('--quote'), ref: q?.price, refLabel: q ? `today ${money(q.price, 2)}` : null, yFmt: (v) => money(v, 2) });
+  $('stripLegend').innerHTML = sc ? `<span style="--c:${css('--quote')}">Contract price by delivery month</span>${cv ? `<span class="dash" style="--c:${css('--ink-2')}">Today's quote · next 3 months avg ${money(cv.avg3, 2)} (${pctS(cv.vsSpot)})</span>` : ''}` : '';
+  tableView($('stripTable'), ['Month', '$/gal'], sc ? sc.months.map((mth, i) => [mth, money(sc.prices[i], 2)]) : []);
+  const sh = s.latestSheet;
+  $('sheetLines').innerHTML = sh ? `<div class="sheet-grid">${Object.entries(sh.spot || {}).map(([k, v]) => `<div class="${sh.picked?.label === k ? 'pick' : ''}">${esc(k)}</div><div class="n ${sh.picked?.label === k ? 'pick' : ''}">${money(v, v % 1 && String(v).split('.')[1].length > 2 ? 4 : 2)}</div>`).join('')}</div><div class="help">Sheet dated ${fmtD(sh.date, false)}${sh.blend ? ` · ${sh.blend} months` : ''}. Bold = the line you buy.${sh.note && !/^good morning\.?$/i.test(sh.note) ? `<br>Note in the email: “${esc(sh.note)}”` : ''}</div>` : '<div class="empty">No sheet received yet.</div>';
+
+  // deliveries
+  const dl = Object.entries(s.deliveries || {}).sort((a, b) => (b[1].date || '').localeCompare(a[1].date || '')).slice(0, 12);
+  $('deliveries').innerHTML = dl.length ? `<table class="list"><tr><th>Date</th><th class="n">Gallons</th><th class="n">$/gal</th><th class="n">Total</th><th>FuelCloud</th><th></th></tr>${dl.map(([id, d]) => `<tr><td>${fmtD(d.date)}</td><td class="n">${fmtGal(d.gallons)}</td><td class="n">${money(d.pricePerGal, 3)}</td><td class="n">${d.total != null ? '$' + Number(d.total).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—'}</td><td>${d.postedToFuelCloud ? 'recorded' : (d.fuelCloudResponse ? `<span class="muted" title="${esc(d.fuelCloudResponse)}">not recorded</span>` : '')}</td><td><button class="btn" data-del="${esc(id)}" title="Remove">×</button></td></tr>`).join('')}</table>` : '<div class="empty">No deliveries logged yet. Log the next one and the basis (your price over HO) starts learning.</div>';
+  $('postFcNote').textContent = s.fuelCloudFillEnabled ? '' : '(needs FUELCLOUD_FILL_PATH on the Worker — until then, enter it in the FuelCloud portal)';
+  $('postFc').disabled = !s.fuelCloudFillEnabled;
+
+  // alerts
+  $('pushMeta').textContent = `${s.pushSubscribers || 0} device${s.pushSubscribers === 1 ? '' : 's'} subscribed`;
+  const al = Object.entries(s.alerts || {}).sort((a, b) => (b[1].at || '').localeCompare(a[1].at || '')).slice(0, 10);
+  $('alerts').innerHTML = al.length ? `<table class="list">${al.map(([, a]) => `<tr><td class="muted" style="white-space:nowrap">${fmtTime(a.at).replace(/^\w+, /, '')}</td><td><b>${esc(a.title)}</b><br><span class="sec">${esc(a.body)}</span></td></tr>`).join('')}</table>` : '<div class="empty">No alerts sent yet.</div>';
+
+  // settings
+  const f = $('settingsForm');
+  for (const [k, v] of Object.entries(cfg)) {
+    const inp = f.elements[k]; if (!inp) continue;
+    if (inp.type === 'checkbox') inp.checked = Boolean(v);
+    else if (k === 'holidays') inp.value = (v || []).join(', ');
+    else inp.value = v ?? '';
+  }
+  if (cfg.tankId && ![...$('tankSelect').options].some(o => o.value === String(cfg.tankId))) { const o = document.createElement('option'); o.value = cfg.tankId; o.textContent = `Tank ${cfg.tankId}`; $('tankSelect').append(o); }
+  $('tankSelect').value = cfg.tankId ?? '';
+  $('foot').textContent = `FuelDesk · Steve's Sanitation · data: FuelCloud, Yahoo Finance (HO=F, delayed), ${cfg.supplierName || 'supplier'} daily sheet`;
+}
+const PROBLEM = {
+  no_tank_data: 'No tank reading from FuelCloud.', no_usage_data: 'No pump transactions in the lookback window — burn rate unknown.',
+  no_price_data: 'Could not fetch HO futures.', fuelcloud_auth: 'FuelCloud rejected the API token — re-create credentials in the portal (Settings → API) and update the Worker secrets.',
+  fuelcloud_error: 'FuelCloud call failed; showing the last stored reading.', tank_stale: 'Tank reading is more than 36 hours old.',
+  inventory_implausible: 'FuelCloud inventory is negative or above capacity — were deliveries entered?', quote_stale: 'No supplier quote in 3 business days — check the price-email script.',
+  firebase_error: 'A Firebase write failed.',
+};
+
+// ───────────────────────────── actions ────────────────────────────────
+let lastLoad = 0;
+async function refresh(quiet) {
+  lastLoad = Date.now();
+  if (!DEMO && !(conn.worker && conn.key)) { $('connect').classList.remove('hidden'); $('app').classList.add('hidden'); return; }
+  $('connect').classList.add('hidden'); $('app').classList.remove('hidden');
+  try { document.body.style.opacity = '.85'; render(await api('/api/status')); if (!quiet) toast('Updated'); }
+  catch (e) { toast(`Couldn't load: ${e.message}`); if (/unauthorized/i.test(e.message)) { $('connect').classList.remove('hidden'); } }
+  finally { document.body.style.opacity = ''; }
+}
+$('connectForm').addEventListener('submit', (e) => { e.preventDefault(); conn = { worker: $('cWorker').value.trim().replace(/\/+$/, ''), key: $('cKey').value.trim() }; LS.set('fd.worker', conn.worker); LS.set('fd.key', conn.key); refresh(); });
+$('btnDisconnect').addEventListener('click', () => { LS.del('fd.worker'); LS.del('fd.key'); conn = { worker: '', key: '' }; refresh(); });
+$('btnRun').addEventListener('click', async () => { const b = $('btnRun'); b.disabled = true; b.textContent = 'Running…'; try { const r = await api('/api/run', { method: 'POST' }); toast(`${STATE[r.plan.state]?.label || r.plan.state}${r.sent.length ? ` · ${r.sent.length} alert sent` : ''}`); await refresh(true); } catch (e) { toast(e.message); } finally { b.disabled = false; b.textContent = 'Run the check now'; } });
+$('btnTestPush').addEventListener('click', async () => { try { const r = await api('/api/push/test', { method: 'POST' }); toast(`Test sent to ${r.results.length} device(s)`); } catch (e) { toast(e.message); } });
+$('deliveryForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const fd = new FormData(e.target); const body = Object.fromEntries(fd.entries()); body.postToFuelCloud = fd.get('postToFuelCloud') === 'on';
+  try { const r = await api('/api/delivery', { method: 'POST', body }); toast(`Delivery logged · now: ${STATE[r.state]?.label || r.state}`); e.target.reset(); e.target.elements.date.value = todayYmd(); await refresh(true); } catch (err) { toast(err.message); }
+});
+$('deliveries').addEventListener('click', async (e) => { const id = e.target.dataset.del; if (!id || !confirm('Remove this delivery?')) return; try { await api(`/api/delivery/${id}`, { method: 'DELETE' }); await refresh(true); } catch (err) { toast(err.message); } });
+$('quoteForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const fd = new FormData(e.target);
+  try { const r = await api('/api/quote', { method: 'POST', body: { date: fd.get('date') || undefined, price: fd.get('price'), source: 'manual' } }); toast(`Quote saved · ${STATE[r.state]?.label || ''}`); e.target.reset(); await refresh(true); } catch (err) { toast(err.message); }
+});
+$('settingsForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const fd = new FormData(e.target); const body = {};
+  for (const [k, v] of fd.entries()) body[k] = v;
+  for (const k of ['leadBusinessDays', 'safetyDays', 'orderCutoffHour', 'floorPct', 'maxFillPct', 'minDropGal', 'loadGal', 'usageSafetyPct', 'usageLookbackDays', 'priceWindowDays', 'cheapPct', 'richPct', 'digestHour']) if (body[k] !== undefined && body[k] !== '') body[k] = Number(body[k]);
+  body.digestEnabled = fd.get('digestEnabled') === 'on';
+  body.tankId = body.tankId ? (isNaN(body.tankId) ? body.tankId : Number(body.tankId)) : null;
+  try { await api('/api/config', { method: 'PUT', body }); toast('Settings saved — re-running the check'); await api('/api/run?dry=1', { method: 'POST' }); await refresh(true); } catch (err) { toast(err.message); }
+});
+$('btnFcTest').addEventListener('click', async () => {
+  const out = $('fcTestOut'); out.textContent = 'Testing…';
+  try {
+    const r = await api('/api/fuelcloud/test');
+    out.innerHTML = `Connected. ${r.tanks.length} tank(s): ${r.tanks.map(t => `${esc(t.name)} (#${t.id}) ${fmtGal(t.inventoryGal)} / ${fmtGal(t.capacityGal)} gal${t.productName ? ', ' + esc(t.productName) : ''}`).join('; ')}. Token ${esc(r.tokenSource)}${r.txError ? ` · transactions: ${esc(r.txError)}` : ` · sample transactions: ${(r.sampleTransactions || []).length}`}`;
+    const sel = $('tankSelect'); sel.innerHTML = '<option value="">First diesel tank</option>'; for (const t of r.tanks) { const o = document.createElement('option'); o.value = t.id; o.textContent = `${t.name} (#${t.id})`; sel.append(o); }
+    sel.value = S?.config?.tankId ?? '';
+  } catch (e) { out.textContent = `FuelCloud test failed: ${e.message}`; }
+});
+
+// push
+const urlB64ToU8 = (s) => { const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+$('btnPush').addEventListener('click', async () => {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('This browser does not support push notifications. On iPhone, add FuelDesk to the Home Screen first.');
+    if (!S?.vapidPublicKey) throw new Error('The Worker has no VAPID keys yet — see the setup guide.');
+    const reg = await navigator.serviceWorker.ready;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('Notifications were not allowed.');
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(S.vapidPublicKey) });
+    await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON(), ua: navigator.userAgent } });
+    toast('Notifications are on for this device'); await refresh(true);
+  } catch (e) { toast(e.message); }
+});
+
+// install service worker (not in demo / file:)
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+window.addEventListener('resize', () => { clearTimeout(window.__rz); window.__rz = setTimeout(() => S && render(S), 150); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S && Date.now() - lastLoad > 5 * 60e3) refresh(true); });
+$('deliveryForm').elements.date.value = todayYmd();
+refresh(true);
+
+// ───────────────────────────── demo data (?demo=1) ────────────────────
+function demoApi(path, opts) {
+  if (path.startsWith('/api/status')) return Promise.resolve(DEMO_STATUS());
+  return Promise.resolve({ ok: true, plan: { state: 'HOLD' }, sent: [], results: [], state: 'HOLD', tanks: [{ id: 4411, name: 'Diesel', inventoryGal: 6120, capacityGal: 10000, productName: 'ULSD #2 B5' }], tokenSource: 'db' });
+}
+function DEMO_STATUS() {
+  const today = todayYmd(); const d = (n) => { const x = ymdDate(today); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  const hoDaily = {}, quotes = {}, tankHistory = {};
+  let v = 4.35; for (let i = 90; i >= 0; i--) { const ymd = d(-i); const dow = ymdDate(ymd).getUTCDay(); if (dow === 0 || dow === 6) continue; v = Math.max(3.9, v + (Math.sin(i / 5) * 0.03) + (i > 30 ? 0.004 : -0.002)); hoDaily[ymd] = +v.toFixed(3); if (i < 25) quotes[ymd] = { price: +(v + 1.05 + Math.sin(i) * 0.01).toFixed(3), product: 'B5 #2 Clear B5', source: 'sheet' }; }
+  let lvl = 7800; for (let i = 30; i >= 0; i--) { const ymd = d(-i); const dow = ymdDate(ymd).getUTCDay(); if (i === 10) lvl = 9000; lvl -= (dow === 0 || dow === 6) ? 40 : 520; tankHistory[ymd] = { inventoryGal: Math.round(lvl) }; }
+  const inv = Math.round(lvl); const proj = []; let L = inv;
+  for (let i = 0; i < 35; i++) { const ymd = d(i); const dow = ymdDate(ymd).getUTCDay(); const u = (dow === 0 || dow === 6) ? 44 : 572; const s = L; L -= i === 0 ? u * .8 : u; proj.push({ ymd, start: Math.round(s), end: Math.round(L), usage: u }); }
+  const floor = proj.find(x => x.end < 2000)?.ymd;
+  const biz = (ymd, step) => { let x = ymd; do { x = d(Math.round((ymdDate(x) - ymdDate(today)) / 86400000) + step); } while ([0, 6].includes(ymdDate(x).getUTCDay())); return x; };
+  const needBy = d(Math.round((ymdDate(floor) - ymdDate(today)) / 86400000) - 1);
+  const orderBy = biz(biz(needBy, -1), -1), arrive = biz(biz(today, 1), 1);
+  const daysToOrderBy = Math.round((ymdDate(orderBy) - ymdDate(today)) / 86400000);
+  const live = hoDaily[Object.keys(hoDaily).sort().pop()];
+  const q = quotes[Object.keys(quotes).sort().pop()];
+  return {
+    serverTime: new Date().toISOString(), pushSubscribers: 1, vapidPublicKey: null, fuelCloudFillEnabled: false,
+    config: { floorPct: 15, maxFillPct: 90, leadBusinessDays: 1, safetyDays: 1, orderCutoffHour: 10, minDropGal: 3500, loadGal: 7500, usageSafetyPct: 10, usageLookbackDays: 28, priceWindowDays: 60, cheapPct: .33, richPct: .67, digestEnabled: true, digestHour: 7, supplierName: 'Lakes Community Coop', quoteProductPattern: '#2 Clear', quoteBlend: 'auto', holidays: [], tankId: null },
+    tank: { id: 4411, name: 'Diesel', productName: 'ULSD #2 B5', site: 'Perham shop', readAt: new Date().toISOString(), inventoryGal: inv, capacityGal: 10000 },
+    usage: { weekdayAvg: 520, weekendAvg: 40, avg7: 380, avgLookback: 385, sampleDays: 28 },
+    hoDaily, quotes, tankHistory, deliveries: { a: { date: d(-10), gallons: 7400, pricePerGal: 5.61, total: 41514, invoice: '184420', postedToFuelCloud: false } },
+    alerts: { a: { at: new Date(Date.now() - 86400e3 * 3).toISOString(), title: 'FuelDesk: Hold', body: '6,980 gal, order by Thu (6d). Quote $5.72; HO $4.52 (-0.4%).' } },
+    latestSheet: { date: today, blend: 'B5', picked: { label: 'B5 #2 Clear B5' }, spot: { 'B5 FM B5': 5.25, 'B5 #2 DYED B5': 5.20, 'B5 RM B5': 5.81, 'B5 #2 Clear B5': q.price, 'N/L 87': 3.91 } },
+    plan: {
+      state: 'HOLD', watch: daysToOrderBy <= 7, headline: `Hold — mid-range price, ${daysToOrderBy} day${daysToOrderBy === 1 ? '' : 's'} until you need to order (${fmtD(orderBy)}).`, recommendedGal: 0,
+      reasons: [`Tank: ${fmtGal(inv)} gal of 10,000 gal (${Math.round(inv / 100)}%). Planning burn ≈ 572 gal on weekdays, 44 on weekends. You reach the 20% floor (2,000 gal) around ${fmtD(floor)}.`, `Lead time 2 business days + 1 safety day → fuel must land by ${fmtD(needBy)}; last day to order is ${fmtD(orderBy)}.`, `HO futures ${money(live, 3)} (down 0.4% vs. prior settle), 52nd percentile of the last 60 days (middle of the range), -1.1% over 5 sessions.`, `Lakes Community Coop quote: ${money(q.price, 3)}/gal today; your basis over HO runs about $1.05, so tomorrow's sheet should be near ${money(live + 1.05, 2)}.`, `Lakes Community Coop's contract strip: Nov 2026, Dec 2026, Jan 2027 average $5.13 — -10.6% vs. today's spot. The market expects lower prices; buy what you need, not a full fill, and consider locking that forward volume.`, 'Watch: order-by date is inside the next 7 days — any dip is a buying chance.'],
+      problems: [], computedAt: new Date().toISOString(), lastRun: { trigger: 'demo' },
+      tank: { inventoryGal: inv, capacityGal: 10000, pct: inv / 100, floorGal: 2000, maxFillGal: 9000, roomNow: 9000 - inv, roomAtArrival: 9000 - proj[2].end, readAt: new Date().toISOString() },
+      timing: { floorYmd: floor, daysToFloor: Math.round((ymdDate(floor) - ymdDate(today)) / 86400000 * 10) / 10, orderBy, daysToOrderBy, arrivalIfOrderedNow: arrive, needBy, cutoffHour: 10 },
+      projection: proj, usage: { weekdayAvg: 520, weekendAvg: 40 },
+      price: { live, prevClose: live + .018, sessionYmd: today, pctRank: .52, chg5d: -.011, intraday: -.004, windowMin: Math.min(...Object.values(hoDaily)), windowMax: Math.max(...Object.values(hoDaily)), windowMedian: live, curveSlope: -.021, nextMonth: { symbol: 'HOZ26.NYM', price: live * .979 } },
+      quote: { ymd: today, price: q.price, product: 'B5 #2 Clear B5', isToday: true, source: 'sheet' },
+      supplierCurve: { row: 'RM Transport #2', offset: -0.05, sheetDate: today, months: ['Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027', 'Jul 2027', 'Aug 2027', 'Sep 2027', 'Oct 2027'], prices: [5.40, 5.00, 5.00, 4.93, 4.92, 5.01, 4.92, 4.83, 4.77, 4.72, 4.74, 4.66] },
+      contractView: { avg3: 5.133, vsSpot: -.106 }, basis: { median: 1.05, samples: 12 }, estDelivered: live + 1.05, dollarImpact: null,
+    },
+  };
+}
+})();
+</script>
+</body>
+</html>
